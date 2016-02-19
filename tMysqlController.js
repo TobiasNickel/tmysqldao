@@ -1,6 +1,6 @@
 var mysql = require('mysql');
 
-// todo: handle the connecton as last parameter
+// add support for ralations
 
 /**
  * makes sure, that poolconnections get released when they got committed or rollback
@@ -158,6 +158,10 @@ module.exports = function (config) {
                 db.saveOne(tableName, keys, callback, connection);
             };
 
+            model.getAll = function (callback, connection) {
+                db.query("SELECT * FROM ??;", [tableName], callback, connection);
+            };
+
             model.findWhere = function (obj, callback, connection) {
                 db.findWhere(tableName, obj, connection, callback);
             };
@@ -169,24 +173,107 @@ module.exports = function (config) {
                 db.remove(tableName, obj, callback, connection)
             };
 
-            model.fields.forEach(function (name, index) {
-                var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
+            for (var i in model.fields) {
+                (function (name, definition) {
+                    var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
 
-                model['getBy' + addName] = function (value, callback, connection) {
-                    db.getBy(tableName, name, value, callback, connection);
-                };
+                    model['getBy' + addName] = function (value, callback, connection) {
+                        db.getBy(tableName, name, value, callback, connection);
+                    };
 
-                model['getOneBy' + addName] = function (value, callback, connection) {
-                    db.getOneBy(tableName, name, value, callback, connection);
-                };
+                    model['getOneBy' + addName] = function (value, callback, connection) {
+                        db.getOneBy(tableName, name, value, callback, connection);
+                    };
 
-                model['removeBy' + addName] = function (value, callback, connection) {
-                    db.removeBy(tableName, name, value, callback, connection);
-                };
-            });
+                    model['removeBy' + addName] = function (value, callback, connection) {
+                        db.removeBy(tableName, name, value, callback, connection);
+                    };
+                    if (definition.mapTo) {
+                        model['fetch' + addName] = function (objs, callback, connection) {
+                            if (!Array.isArray(objs)) { objs = [objs]; }
+                            var objsByKey = {};
+                            var keys = objs.map(function (obj) {
+                                var key;
+                                if (typeof obj == 'string') {
+                                    key = obj;
+                                    obj = {};
+                                    obj[name] = key;
+                                } else {
+                                    key = obj[definition.mapTo.localField || name];
+                                }
+                                if (!objsByKey[key]) objsByKey[key] = [];
+                                objsByKey[key].push(obj);
+                                return key;
+                            });
+                            db.query(
+                                "SELECT * FROM " + definition.mapTo.tableName + " WHERE " + (definition.mapTo.foreignKey || 'id') + ' IN (?)', [keys],
+                                function (err, list) {
+                                    if (err) { callback(err); return; }
+                                    console.log('loaded USER', list)
+                                    list.forEach(function (item) {
+                                        var key = item[definition.mapTo.foreignKey]
+                                        var objs = objsByKey[key];
+                                        objs.forEach(function (obj) {
+                                            if (definition.mapTo.multiple) {
+                                                if (!obj['_' + name]) obj['_' + name] = []
+                                                obj['_' + name].push(item);
+                                            } else {
+                                                obj['_' + name] = item;
+                                            }
+                                        });
+                                    });
+                                    callback(null, objs)
+                                }, connection);
+                        }
+                    }
+                })(i, model.fields[i]);
+            }
+            if (model.has) {
+                for (var name in model.has) {
+                    (function (name, definition,localField) {
+                        var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
+                        model['fetch' + addName] = function (objs, callback, connection) {
+                            if (!Array.isArray(objs)) { objs = [objs]; }
+                            var objsByKey = {};
+                            var keys = objs.map(function (obj) {
+                                var key;
+                                if (typeof obj == 'string') {
+                                    key = obj;
+                                    obj = {};
+                                    obj[name] = key;
+                                } else {
+                                    key = obj[definition.mapTo.localField || name];
+                                }
+                                if (!objsByKey[key]) objsByKey[key] = [];
+                                objsByKey[key].push(obj);
+                                return key;
+                            });
+                            db.query(
+                                "SELECT * FROM " + definition.mapTo.tableName + " WHERE " + (definition.mapTo.foreignKey || 'id') + ' IN (?)', [keys],
+                                function (err, list) {
+                                    if (err) { callback(err); return; }
+                                    list.forEach(function (item) {
+                                        var key = item[definition.mapTo.foreignKey]
+                                        var objs = objsByKey[key];
+                                        objs.forEach(function (obj) {
+                                            if (definition.mapTo.multiple) {
+                                                if (!obj['_' + name]) obj['_' + name] = []
+                                                obj['_' + name].push(item);
+                                            } else {
+                                                obj['_' + name] = item;
+                                            }
+                                        });
+                                    });
+                                    callback(null, objs)
+                                }, connection);
+
+                        }
+                    })(name, {mapTo:model.has[name]});
+                }
+            }
             return model;
         }
-    };
+    }
 
     return db;
 }
