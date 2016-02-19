@@ -1,4 +1,7 @@
 var mysql = require('mysql');
+
+// todo: handle the connecton as last parameter
+
 /**
  * makes sure, that poolconnections get released when they got committed or rollback
  */
@@ -26,7 +29,9 @@ var extendTransactionConnection = function (connection) {
 };
 
 function first(callback) {
+    console.log('pack First callback', callback)
     return function (err, data) {
+        console.log('get first;')
         if (err) {
             callback(err);
         } else {
@@ -36,142 +41,152 @@ function first(callback) {
 }
 
 
-module.exports = function(config)
-var db = {
-    pool: mysql.createPool(config),
-    /**
-     * query method, that can get a connection, to support transactions
-     * you can follow a paradime where you have connection and callback as the last two params, and call query with both.
-     * so your method can also run in a transaction.
-     */
-    query: function (sql, params, connection, callback) {
-        if (typeof params == 'function') {
-            // no connection
-            //normal request params is the callback
-            callback = params;
-            connection = db.pool;
-            params = [];
-        } else if (typeof connection == 'function') {
-            callback = connection;
-            if (typeof params.query == 'function') {
-                // params is a connection
-                connection = params;
+module.exports = function (config) {
+    var db = {
+        pool: mysql.createPool(config),
+        /**
+         * query method, that can get a connection, to support transactions
+         * you can follow a paradime where you have connection and callback as the last two params, and call query with both.
+         * so your method can also run in a transaction.
+         */
+        query(sql, params, callback, connection) {
+            if (typeof params == 'function') {
+                connection = callback;
+                callback = params;
                 params = [];
-            } else {
-                //normal request
-                connection = db.pool;
             }
-        } else if (!connection) {
-            connection = db.pool;
-        }
-        connection.query(sql, params, callback);
-    },
-    beginTransaction: function (callback) {
-        db.database.getConnection(function (err, connection) {
-            if (err) { callback(err); return }
-            connection.beginTransaction(function (err) {
-                if (err) { callback(err); return; }
-                callback(null, extendTransactionConnection(connection));
+            if (!connection) connection = db.pool;
+            connection.query(sql, params, callback);
+        },
+        beginTransaction(callback) {
+            db.database.getConnection(function (err, connection) {
+                if (err) { callback(err); return }
+                connection.beginTransaction(function (err) {
+                    if (err) { callback(err); return; }
+                    callback(null, extendTransactionConnection(connection));
+                });
             });
-        });
-    },
-    insert: function (tableName, obj, callback) {
-        var sql = 'INSERT INTO ' + tableName + ' SET ?';
-        db.query(sql, obj, function (err, result) {
-            if (!err) {
-                obj.id = result.insertId;
-            } else {
-                console.log(err)
+        },
+        insert: function (tableName, obj, callback, connection) {
+            var sql = 'INSERT INTO ' + tableName + ' SET ?';
+            db.query(sql, obj, function (err, result) {
+                if (!err) {
+                    obj.id = result.insertId;
+                } else {
+                    console.log(err)
+                }
+                callback(err, result.insertId);
+            }, connection);
+        },
+
+        getBy: function (tableName, fieldName, value, callback, connection) {
+            var sql = 'SELECT * FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?)';
+            db.query(sql, [value], callback, connection);
+        },
+
+        getOneBy: function (tableName, fieldName, value, callback, connection) {
+            var sql = 'SELECT * FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?) LIMIT 0, 1;';
+            db.query(sql, [value], first(callback), connection);
+        },
+        findWhere: function (tableName, obj, callback, connection) {
+            var sql = 'SELECT * FROM ' + tableName + ' WHERE ';
+            var where = '1 '
+            var values = [];
+            for (var i in obj) {
+                where += ' AND ?? = ?';
+                values.push(i);
+                values.push(obj[i]);
             }
-            callback(err, result.insertId);
-        });
-    },
-
-    getBy: function (tableName, fieldName, value, connection, callback) {
-        var sql = 'SELECT * FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?)';
-        db.query(sql, [value], connection, callback);
-    },
-
-    getOneBy: function (tableName, fieldName, value, connection, callback) {
-        var sql = 'SELECT * FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?) LIMIT 0, 1;';
-        db.query(sql, [value], connection, first(callback));
-    },
-    findWhere: function (tableName, obj, connection, callback) {
-        var sql = 'SELECT * FROM ' + tableName + ' WHERE ?;';
-        db.query(sql, [obj], connection, utils.first(callback));
-    },
-
-    removeBy: function (tableName, fieldName, value, connection, callback) {
-        var sql = 'DELETE FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?);'
-        db.query(sql, [value], connection, utils.first(callback));
-    },
-    remove: function (tableName, objs, connection, callback) {
-        if (!Array.isArray(objs)) { objs = [objs]; }
-        var ids = objs.map(function (obj) {
-            if (typeof obj == "object") {
-                return obj.id;
-            } else {
-                return obj;
+            db.query(sql + where, values, callback, connection);
+        },
+        findOneWhere: function (tableName, obj, callback, connection) {
+            var sql = 'SELECT * FROM ' + tableName + ' WHERE ';
+            var where = '1 '
+            var values = [];
+            for (var i in obj) {
+                where += ' AND ?? = ?';
+                values.push(i);
+                values.push(obj[i]);
             }
-        });
-        db.removeBy(tableName, 'id', ids, connection, callback);
-    },
+            var limit = ' LIMIT 0,1;'
+            console.log('USED THE findOneWhere')
+            db.query(sql + where + limit, values, first(callback), connection);
+        },
 
-    saveOne: function (tableName, keys, connection, callback) {
-        var sql = 'UPDATE ' + tableName + ' SET ';
-        var keybuilder = [];
-        var params = [];
-        for (var i in keys) {
-            if (i != 'id') {
-                keybuilder.push(i + '=?');
-                params.push(keys[i]);
+        removeBy: function (tableName, fieldName, value, callback, connection) {
+            var sql = 'DELETE FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?);'
+            db.query(sql, [value], callback, connection);
+        },
+        remove: function (tableName, objs, callback, connection) {
+            if (!Array.isArray(objs)) { objs = [objs]; }
+            var ids = objs.map(function (obj) {
+                if (typeof obj == "object") {
+                    return obj.id;
+                } else {
+                    return obj;
+                }
+            });
+            db.removeBy(tableName, 'id', ids, callback, connection);
+        },
+
+        saveOne: function (tableName, keys, callback, connection) {
+            var sql = 'UPDATE ' + tableName + ' SET ';
+            var keybuilder = [];
+            var params = [];
+            for (var i in keys) {
+                if (i != 'id') {
+                    keybuilder.push(i + '=?');
+                    params.push(keys[i]);
+                }
             }
+            sql += keybuilder.join(',');
+            sql += ' WHERE id = ?;';
+            params.push(keys.id);
+            db.query(sql, params, callback, connection);
+        },
+
+        prepareController: function (model) {
+            var tableName = model.tableName;
+
+            model.db = db;
+
+            model.insert = function (obj, callback, connection) {
+                db.insert(tableName, obj, callback, connection);
+            }
+
+            model.saveOne = function (keys, callback, connection) {
+                db.saveOne(tableName, keys, callback, connection);
+            };
+
+            model.findWhere = function (obj, callback, connection) {
+                db.findWhere(tableName, obj, connection, callback);
+            };
+            model.findOneWhere = function (obj, callback, connection) {
+                db.findOneWhere(tableName, obj, callback, connection);
+            };
+
+            model.remove = function (obj, callback, connection) {
+                db.remove(tableName, obj, callback, connection)
+            };
+
+            model.fields.forEach(function (name, index) {
+                var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
+
+                model['getBy' + addName] = function (value, callback, connection) {
+                    db.getBy(tableName, name, value, callback, connection);
+                };
+
+                model['getOneBy' + addName] = function (value, callback, connection) {
+                    db.getOneBy(tableName, name, value, callback, connection);
+                };
+
+                model['removeBy' + addName] = function (value, callback, connection) {
+                    db.removeBy(tableName, name, value, callback, connection);
+                };
+            });
+            return model;
         }
-        sql += keybuilder.join(',');
-        sql += ' WHERE id = ?;';
-        params.push(keys.id);
-        db.query(sql, params, connection, callback);
-    },
+    };
 
-    prepareController: function (model) {
-        var tableName = model.tableName;
-
-        model.db = db;
-        
-        model.insert = function (obj, connection, callback) {
-            db.insert(tableName, obj, connection, callback);
-        }
-
-        model.saveOne = function (keys, connection, callback) {
-            db.saveOne(tableName, keys, connection, callback);
-        };
-
-        model.findWhere = function (obj, connection, callback) {
-            db.saveOne(tableName, obj, connection, callback);
-        };
-
-        model.remove = function (obj, connection, callback) {
-            db.remove(tableName, obj, connection, callback)
-        };
-
-        model.fields.forEach(function (name, index) {
-            var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
-
-            model['getBy' + addName] = function (value, connection, callback) {
-                db.getBy(tableName, name, value, connection, callback);
-            };
-
-            model['getOneBy' + addName] = function (value, connection, callback) {
-                db.getOneBy(tableName, name, value, connection, callback);
-            };
-
-            model['removeBy' + addName] = function (value, connection, callback) {
-                db.removeBy(tableName, name, value, connection, callback);
-            };
-        });
-        return model;
-    }
-};
-
-return db;
+    return db;
 }
