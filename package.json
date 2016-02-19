@@ -1,0 +1,21 @@
+{
+  "name": "tmysqlcontroller",
+  "version": "1.0.0",
+  "description": "handle mysql the direct way",
+  "main": "tMysqlController.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mysql",
+    "controller",
+    "model",
+    "orm",
+    "dsl"
+  ],
+  "author": "Tobias Nickel",
+  "license": "MIT",
+  "dependencies": {
+    "mysql": "^2.10.2"
+  }
+}
