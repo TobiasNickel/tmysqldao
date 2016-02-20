@@ -1,6 +1,7 @@
 var mysql = require('mysql');
 
-// add support for ralations
+
+// todo: add support for  n:m ralations including middle Properties (could be realized by 2 simple Fetch methods)
 
 /**
  * makes sure, that poolconnections get released when they got committed or rollback
@@ -29,9 +30,7 @@ var extendTransactionConnection = function (connection) {
 };
 
 function first(callback) {
-    console.log('pack First callback', callback)
     return function (err, data) {
-        console.log('get first;')
         if (err) {
             callback(err);
         } else {
@@ -68,12 +67,20 @@ module.exports = function (config) {
             });
         },
         insert: function (tableName, obj, callback, connection) {
+
+            var val = {};
+            for (var i in obj) {
+                if(obj.hasOwnProperty(i) && typeof obj[i] !== 'object'){
+                    val[i] = obj[i];
+                }
+            }
+
             var sql = 'INSERT INTO ' + tableName + ' SET ?';
-            db.query(sql, obj, function (err, result) {
+            db.query(sql, val, function (err, result) {
                 if (!err) {
                     obj.id = result.insertId;
                 } else {
-                    console.log(err)
+                    console.log(err);
                 }
                 callback(err, result.insertId);
             }, connection);
@@ -109,7 +116,6 @@ module.exports = function (config) {
                 values.push(obj[i]);
             }
             var limit = ' LIMIT 0,1;'
-            console.log('USED THE findOneWhere')
             db.query(sql + where + limit, values, first(callback), connection);
         },
 
@@ -134,7 +140,7 @@ module.exports = function (config) {
             var keybuilder = [];
             var params = [];
             for (var i in keys) {
-                if (i != 'id') {
+                if (i != 'id' && typeof keys[i] !== 'object') {
                     keybuilder.push(i + '=?');
                     params.push(keys[i]);
                 }
@@ -149,6 +155,7 @@ module.exports = function (config) {
             var tableName = model.tableName;
 
             model.db = db;
+
 
             model.insert = function (obj, callback, connection) {
                 db.insert(tableName, obj, callback, connection);
@@ -188,92 +195,61 @@ module.exports = function (config) {
                     model['removeBy' + addName] = function (value, callback, connection) {
                         db.removeBy(tableName, name, value, callback, connection);
                     };
-                    if (definition.mapTo) {
-                        model['fetch' + addName] = function (objs, callback, connection) {
-                            if (!Array.isArray(objs)) { objs = [objs]; }
-                            var objsByKey = {};
-                            var keys = objs.map(function (obj) {
-                                var key;
-                                if (typeof obj == 'string') {
-                                    key = obj;
-                                    obj = {};
-                                    obj[name] = key;
-                                } else {
-                                    key = obj[definition.mapTo.localField || name];
-                                }
-                                if (!objsByKey[key]) objsByKey[key] = [];
-                                objsByKey[key].push(obj);
-                                return key;
-                            });
-                            db.query(
-                                "SELECT * FROM " + definition.mapTo.tableName + " WHERE " + (definition.mapTo.foreignKey || 'id') + ' IN (?)', [keys],
-                                function (err, list) {
-                                    if (err) { callback(err); return; }
-                                    console.log('loaded USER', list)
-                                    list.forEach(function (item) {
-                                        var key = item[definition.mapTo.foreignKey]
-                                        var objs = objsByKey[key];
-                                        objs.forEach(function (obj) {
-                                            if (definition.mapTo.multiple) {
-                                                if (!obj['_' + name]) obj['_' + name] = []
-                                                obj['_' + name].push(item);
-                                            } else {
-                                                obj['_' + name] = item;
-                                            }
-                                        });
-                                    });
-                                    callback(null, objs)
-                                }, connection);
-                        }
-                    }
+                    prepareFetchMethod(db, model, tableName, name, definition)
                 })(i, model.fields[i]);
             }
             if (model.has) {
                 for (var name in model.has) {
-                    (function (name, definition,localField) {
-                        var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
-                        model['fetch' + addName] = function (objs, callback, connection) {
-                            if (!Array.isArray(objs)) { objs = [objs]; }
-                            var objsByKey = {};
-                            var keys = objs.map(function (obj) {
-                                var key;
-                                if (typeof obj == 'string') {
-                                    key = obj;
-                                    obj = {};
-                                    obj[name] = key;
-                                } else {
-                                    key = obj[definition.mapTo.localField || name];
-                                }
-                                if (!objsByKey[key]) objsByKey[key] = [];
-                                objsByKey[key].push(obj);
-                                return key;
-                            });
-                            db.query(
-                                "SELECT * FROM " + definition.mapTo.tableName + " WHERE " + (definition.mapTo.foreignKey || 'id') + ' IN (?)', [keys],
-                                function (err, list) {
-                                    if (err) { callback(err); return; }
-                                    list.forEach(function (item) {
-                                        var key = item[definition.mapTo.foreignKey]
-                                        var objs = objsByKey[key];
-                                        objs.forEach(function (obj) {
-                                            if (definition.mapTo.multiple) {
-                                                if (!obj['_' + name]) obj['_' + name] = []
-                                                obj['_' + name].push(item);
-                                            } else {
-                                                obj['_' + name] = item;
-                                            }
-                                        });
-                                    });
-                                    callback(null, objs)
-                                }, connection);
-
-                        }
-                    })(name, {mapTo:model.has[name]});
+                    prepareFetchMethod(db, model, tableName, name, { mapTo: model.has[name] });
                 }
             }
             return model;
         }
     }
 
+
     return db;
+}
+
+
+
+function prepareFetchMethod(db, model, tableName, name, definition) {
+    var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
+    model['fetch' + addName] = function (objs, callback, connection) {
+        if (!Array.isArray(objs)) { objs = [objs]; }
+        var objsByKey = {};
+        var keys = objs.map(function (obj) {
+            var key;
+            if (typeof obj == 'string') {
+                key = obj;
+                obj = {};
+                obj[name] = key;
+            } else {
+                key = obj[definition.mapTo.localField || name];
+            }
+            if (!objsByKey[key]) objsByKey[key] = [];
+            objsByKey[key].push(obj);
+            return key;
+        });
+        db.query(
+            "SELECT * FROM " + definition.mapTo.tableName + " WHERE " + (definition.mapTo.foreignKey || 'id') + ' IN (?)', [keys],
+            function (err, list) {
+                if (err) { callback(err); return; }
+                list.forEach(function (item) {
+                    var key = item[definition.mapTo.foreignKey]
+                    var objs = objsByKey[key];
+                    objs.forEach(function (obj) {
+                        if (definition.mapTo.multiple) {
+                            if (!obj['_' + name]) obj['_' + name] = []
+                            obj['_' + name].push(item);
+                        } else {
+                            obj['_' + name] = item;
+                        }
+                    });
+                });
+                callback(null, objs)
+            }, connection);
+
+    }
+
 }
