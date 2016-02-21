@@ -1,6 +1,5 @@
 var mysql = require('mysql');
 
-
 // todo: add support for  n:m ralations including middle Properties (could be realized by 2 simple Fetch methods)
 
 /**
@@ -39,7 +38,6 @@ function first(callback) {
     }
 }
 
-
 module.exports = function (config) {
     var db = {
         pool: mysql.createPool(config),
@@ -67,10 +65,9 @@ module.exports = function (config) {
             });
         },
         insert: function (tableName, obj, callback, connection) {
-
             var val = {};
             for (var i in obj) {
-                if(obj.hasOwnProperty(i) && typeof obj[i] !== 'object'){
+                if (obj.hasOwnProperty(i) && typeof obj[i] !== 'object') {
                     val[i] = obj[i];
                 }
             }
@@ -119,50 +116,82 @@ module.exports = function (config) {
             db.query(sql + where + limit, values, first(callback), connection);
         },
 
-        removeBy: function (tableName, fieldName, value, callback, connection) {
-            var sql = 'DELETE FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?);'
-            db.query(sql, [value], callback, connection);
-        },
-        remove: function (tableName, objs, callback, connection) {
+        remove: function (tableName, idKey, objs, callback, connection) {
             if (!Array.isArray(objs)) { objs = [objs]; }
-            var ids = objs.map(function (obj) {
-                if (typeof obj == "object") {
-                    return obj.id;
-                } else {
-                    return obj;
+            if (!Array.isArray(idKey)) { idKey = [idKey]; }
+            var sql = 'DELETE FROM ' + tableName + ' WHERE ';
+            if (idKey.length === 1) {
+                var key = idKey[0];
+                var ids = objs.map(function (obj) {
+                    if (typeof obj == "object") {
+                        return obj[key];
+                    } else {
+                        return obj;
+                    }
+                });
+
+                var sql += key + ' IN (?);'
+                db.query(sql, [ids], callback, connection);
+            } else {
+                var values = [];
+                var whereBuilder = [];
+                for (var i in objs) {
+                    var obj = objs[i];
+                    var clouseBuilder = []
+                    idKey.forEach(function (key) {
+                        clouseBuilder.push('?? = ?');
+                        values.push(i);
+                        values.push(obj[i]);
+                    });
+                    whereBuilder.puch('(' + clouseBuilder.join(' AND ') + ')')
                 }
-            });
-            db.removeBy(tableName, 'id', ids, callback, connection);
+                sql += whereBuilder.join('OR');
+                db.query(sql, values, callback, connection);
+            }
         },
 
-        saveOne: function (tableName, keys, callback, connection) {
+        saveOne: function (tableName, primaries, keys, callback, connection) {
+            // primaries is optional parameter, default is 'id'
+            if (typeof primaries == "function") {
+                connection = callback;
+                callback = primaries;
+                primaries = ['id'];
+            }
+            // primaries can be one or more Keys
+            if (!Array.isArray(primaries)) primaries = [primaries];
+
             var sql = 'UPDATE ' + tableName + ' SET ';
             var keybuilder = [];
             var params = [];
             for (var i in keys) {
-                if (i != 'id' && typeof keys[i] !== 'object') {
+                if (primaries.indexOf(i) === -1 && typeof keys[i] !== 'object') {
                     keybuilder.push(i + '=?');
                     params.push(keys[i]);
                 }
             }
             sql += keybuilder.join(',');
-            sql += ' WHERE id = ?;';
-            params.push(keys.id);
-            db.query(sql, params, callback, connection);
+            sql += ' WHERE '
+            primaries.forEach(function (primary, index) {
+                if (index) sql += ' AND ';
+                sql += '?? = ?';
+                params.push(primary);
+                params.push(keys[primary]);
+            });
+            db.query(sql + ';', params, callback, connection);
         },
 
         prepareController: function (model) {
             var tableName = model.tableName;
+            var IDKeys = [];
 
             model.db = db;
-
 
             model.insert = function (obj, callback, connection) {
                 db.insert(tableName, obj, callback, connection);
             }
 
-            model.saveOne = function (keys, callback, connection) {
-                db.saveOne(tableName, keys, callback, connection);
+            model.saveOne = function (obj, callback, connection) {
+                db.saveOne(tableName, IDKeys, obj, callback, connection);
             };
 
             model.getAll = function (callback, connection) {
@@ -177,9 +206,8 @@ module.exports = function (config) {
             };
 
             model.remove = function (obj, callback, connection) {
-                db.remove(tableName, obj, callback, connection)
+                db.remove(tableName, IDKeys, obj, callback, connection)
             };
-
             for (var i in model.fields) {
                 (function (name, definition) {
                     var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
@@ -193,11 +221,13 @@ module.exports = function (config) {
                     };
 
                     model['removeBy' + addName] = function (value, callback, connection) {
-                        db.removeBy(tableName, name, value, callback, connection);
+                        db.remove(tableName, name, value, callback, connection);
                     };
                     prepareFetchMethod(db, model, tableName, name, definition)
+                    if (definition.primary) { IDKeys.push(name); }
                 })(i, model.fields[i]);
             }
+            if (!IDKeys.length) IDKeys.push('id');
             if (model.has) {
                 for (var name in model.has) {
                     prepareFetchMethod(db, model, tableName, name, { mapTo: model.has[name] });
@@ -205,13 +235,9 @@ module.exports = function (config) {
             }
             return model;
         }
-    }
-
-
+    };
     return db;
 }
-
-
 
 function prepareFetchMethod(db, model, tableName, name, definition) {
     var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
@@ -249,7 +275,5 @@ function prepareFetchMethod(db, model, tableName, name, definition) {
                 });
                 callback(null, objs)
             }, connection);
-
     }
-
 }
