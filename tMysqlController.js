@@ -1,6 +1,8 @@
 var mysql = require('mysql');
 
 // todo: add support for  n:m ralations including middle Properties (could be realized by 2 simple Fetch methods)
+// todo: paging, for findWhere, and getBy
+// todo: save many at once
 
 /**
  * makes sure, that poolconnections get released when they got committed or rollback
