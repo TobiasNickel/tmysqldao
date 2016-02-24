@@ -108,9 +108,10 @@ module.exports = function (config) {
                     result = res;
                     done();
                 }, connection);
-                db.query('SELECT count(*) as count ' + sql.slice(sql.toLowerCase().indexOf('from')), values, function (err, c) {
+                db.query('SELECT count(*) as resultCount ' + sql.slice(sql.toLowerCase().indexOf('from')), values, function (err, c) {
                     if (err) { pages = err; done(); return; }
-                    pages = c;
+                    pages = c[0];
+                    pages.pageCount = Math.ceil(pages.resultCount / pagesize);
                     done();
                 }, connection);
                 function done() {
