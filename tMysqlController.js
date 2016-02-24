@@ -2,7 +2,6 @@ var mysql = require('mysql');
 
 // todo: add support for  n:m ralations including middle Properties (could be realized by 2 simple Fetch methods)
 // todo: paging, for findWhere, and getBy
-// todo: save many at once
 
 /**
  * makes sure, that poolconnections get released when they got committed or rollback
@@ -131,8 +130,7 @@ module.exports = function (config) {
                         return obj;
                     }
                 });
-
-                var sql += key + ' IN (?);'
+                sql += key + ' IN (?);'
                 db.query(sql, [ids], callback, connection);
             } else {
                 var values = [];
@@ -151,7 +149,21 @@ module.exports = function (config) {
                 db.query(sql, values, callback, connection);
             }
         },
-
+        save:function(tableName, primaries, objs, callback,connection){
+            if(!Array.isArray(objs)){objs = [objs];}
+            var number = objs.length;
+            var count = 0;
+            var errors = [];
+            objs.foreEach(function(obj){
+                 db.saveOne(tableName,primaries, obj, function(err){
+                     count++;
+                     if(err){errors.push([obj,err]);}
+                     if(count === number){
+                         callback(errors.length ? errors : null);
+                     }
+                 },connection)
+            });
+        },
         saveOne: function (tableName, primaries, keys, callback, connection) {
             // primaries is optional parameter, default is 'id'
             if (typeof primaries == "function") {
@@ -191,7 +203,9 @@ module.exports = function (config) {
             model.insert = function (obj, callback, connection) {
                 db.insert(tableName, obj, callback, connection);
             }
-
+            model.save= function(objs, callback, connection){
+                db.save(tableName,IDKeys,objs,callback, connection)
+            };
             model.saveOne = function (obj, callback, connection) {
                 db.saveOne(tableName, IDKeys, obj, callback, connection);
             };
