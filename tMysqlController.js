@@ -1,7 +1,5 @@
 var mysql = require('mysql');
 
-// todo: add support for  n:m ralations including middle Properties (could be realized by 2 simple Fetch methods)
-
 /**
  * makes sure, that poolconnections get released when they got committed or rollback
  */
@@ -44,7 +42,11 @@ module.exports = function (config) {
         /**
          * query method, that can get a connection, to support transactions
          * you can follow a paradime where you have connection and callback as the last two params, and call query with both.
-         * so your method can also run in a transaction.
+         * so your method can also run in a transaction. otherwise the query method is compatible to the mysql-connection/pool.query method
+         * @param {string} sql the querystring
+         * @param {array} [params] the parameter that get insert into the query
+         * @param {function} callback the callback that will receife the response
+         * @param {mysql-connection} connection to be used for this query.
          */
         query(sql, params, callback, connection) {
             if (typeof params == 'function') {
@@ -55,6 +57,10 @@ module.exports = function (config) {
             if (!connection) connection = db.pool;
             connection.query(sql, params, callback);
         },
+        /**
+         * get a connectio where the transaction is started.
+         * @param {connection-callback} callback, function called with a new transaction
+         */
         beginTransaction(callback) {
             db.database.getConnection(function (err, connection) {
                 if (err) { callback(err); return }
@@ -64,26 +70,18 @@ module.exports = function (config) {
                 });
             });
         },
-        insert: function (tableName, obj, callback, connection) {
-            var val = {};
-            for (var i in obj) {
-                if (obj.hasOwnProperty(i) && typeof obj[i] !== 'object') {
-                    val[i] = obj[i];
-                }
-            }
 
-            var sql = 'INSERT INTO ' + tableName + ' SET ?';
-            db.query(sql, val, function (err, result) {
-                if (!err) {
-                    obj.id = result.insertId;
-                } else {
-                    console.log(err);
-                }
-                callback(err, result.insertId);
-            }, connection);
-        },
         defaultPagesize: 20,
 
+        /**
+         * like query, but provide pageing for select queries.
+         * @param {string} tableName, the table to insert
+         * @param {object} obj data to insert
+         * @param {Number} [page] the page to get, if not provided: get all
+         * @param {Number} [pagesize] the number of objects to receife in a single request. default is 20
+         * @param {function} callback the callback that will receife the response
+         * @param {mysql-connection} connection to be used for this query.
+         */
         selectPaged: function (sql, values, page, pagesize, callback, connection) {
             var paging = '';
             if (typeof page === 'function') {
@@ -115,7 +113,7 @@ module.exports = function (config) {
                     done();
                 }, connection);
                 function done() {
-                console.log('db.selectPaged,',sql, values, page, pagesize)
+                    console.log('db.selectPaged,', sql, values, page, pagesize)
                     if (pages !== null && result !== null) {
                         if (pages instanceof Error) {
                             callback(pages)
@@ -129,15 +127,42 @@ module.exports = function (config) {
             }
         },
 
+        /**
+         * query data with a specific property.
+         * @param {string} tableName, the table to insert
+         * @param {string} fieldName the name of the collom
+         * @param {mixed} value one or an Array of simple values where the result should have (String, Number, Boolean, null)
+         * @param {Number} [pagesize] the number of objects to receife in a single request. default is 20
+         * @param {function} callback the callback that will receife the response
+         * @param {mysql-connection} connection to be used for this query.
+         */
         getBy: function (tableName, fieldName, value, page, pagesize, callback, connection) {
             var sql = 'SELECT * FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?)';
             db.selectPaged(sql, [value], page, pagesize, callback, connection);
         },
 
+        /**
+         * query data with a specific property.
+         * @param {string} tableName, the table to insert
+         * @param {string} fieldName the name of the collom
+         * @param {mixed} value one or an Array of simple values where the result should have (String, Number, Boolean, null)
+         * @param {Number} [pagesize] the number of objects to receife in a single request. default is 20
+         * @param {function} callback the callback that will receife the first element of the response
+         * @param {mysql-connection} connection to be used for this query.
+         */
         getOneBy: function (tableName, fieldName, value, callback, connection) {
             var sql = 'SELECT * FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?) LIMIT 0, 1;';
             db.query(sql, [value], first(callback), connection);
         },
+
+        /**
+         * query rows that have multiple specific values
+         * @param {string} tableName, the table to insert
+         * @param {object} object with key-values that should metch the resultRows
+         * @param {Number} [pagesize] the number of objects to receife in a single request. default is 20
+         * @param {function} callback the callback that will receifethe response
+         * @param {mysql-connection} connection to be used for this query.
+         */
         findWhere: function (tableName, obj, page, pagesize, callback, connection) {
             var sql = 'SELECT * FROM ' + tableName + ' WHERE ';
             var where = '1 '
@@ -149,6 +174,15 @@ module.exports = function (config) {
             }
             db.selectPaged(sql + where, values, page, pagesize, callback, connection);
         },
+
+        /**
+         * query rows that have multiple specific values
+         * @param {string} tableName, the table to insert
+         * @param {object} object with key-values that should metch the resultRows
+         * @param {Number} [pagesize] the number of objects to receife in a single request. default is 20
+         * @param {function} callback the callback that will receife the the first element of the response
+         * @param {mysql-connection} connection to be used for this query.
+         */
         findOneWhere: function (tableName, obj, callback, connection) {
             var sql = 'SELECT * FROM ' + tableName + ' WHERE ';
             var where = '1 '
@@ -162,6 +196,14 @@ module.exports = function (config) {
             db.query(sql + where + limit, values, first(callback), connection);
         },
 
+        /**
+         * remove objects according to there primary key.
+         * @param {string} tableName, the table to insert
+         * @param {String | Array of String} idKey one or more names that make there primary key
+         * @param {Object | Array} [objs] objects to delete from database. for single key tables a string or number is fine as key.
+         * @param {function} callback the callback that will receifethe response
+         * @param {mysql-connection} connection to be used for this query.
+         */
         remove: function (tableName, idKey, objs, callback, connection) {
             if (!Array.isArray(objs)) { objs = [objs]; }
             if (!Array.isArray(idKey)) { idKey = [idKey]; }
@@ -194,6 +236,42 @@ module.exports = function (config) {
                 db.query(sql, values, callback, connection);
             }
         },
+
+        /**
+         * Insert some oject to the given table it will only use the properties,
+         * that are direct on the object(no prototype chain) and ignore neasted objects
+         * @param {string} tableName, the table to insert
+         * @param {object} obj data to insert
+         * @param {function} callback the callback that will receife the response
+         * @param {mysql-connection} connection to be used for this query.
+         */
+        insert: function (tableName, obj, callback, connection) {
+            var val = {};
+            for (var i in obj) {
+                if (obj.hasOwnProperty(i) && typeof obj[i] !== 'object') {
+                    val[i] = obj[i];
+                }
+            }
+
+            var sql = 'INSERT INTO ' + tableName + ' SET ?';
+            db.query(sql, val, function (err, result) {
+                if (!err) {
+                    obj.id = result.insertId;
+                } else {
+                    console.log(err);
+                }
+                callback(err, result.insertId);
+            }, connection);
+        },
+
+        /**
+         * updates the values of rows, based on the primary key
+         * @param {string} tableName, the table to insert
+         * @param {String | Array of String} primaries one or more names that make there primary key
+         * @param {Object | Array} objs one or more objects to update. (key can not change.)
+         * @param {function} callback the callback that will receife the response
+         * @param {mysql-connection} connection to be used for this query.
+         */
         save: function (tableName, primaries, objs, callback, connection) {
             if (!Array.isArray(objs)) { objs = [objs]; }
             var number = objs.length;
@@ -209,6 +287,15 @@ module.exports = function (config) {
                 }, connection)
             });
         },
+
+        /**
+         * updates the values of a row, based on there primary key
+         * @param {string} tableName, the table to insert
+         * @param {String | Array of String} primaries one or more names that make there primary key
+         * @param {Object} objs only ONE object to update. (key can not change.)
+         * @param {function} callback the callback that will receife the response
+         * @param {mysql-connection} connection to be used for this query.
+         */
         saveOne: function (tableName, primaries, keys, callback, connection) {
             // primaries is optional parameter, default is 'id'
             if (typeof primaries == "function") {
@@ -229,7 +316,7 @@ module.exports = function (config) {
                 }
             }
             sql += keybuilder.join(',');
-            sql += ' WHERE '
+            sql += ' WHERE ';
             primaries.forEach(function (primary, index) {
                 if (index) sql += ' AND ';
                 sql += '?? = ?';
@@ -239,70 +326,77 @@ module.exports = function (config) {
             db.query(sql + ';', params, callback, connection);
         },
 
-        prepareController: function (model) {
-            var tableName = model.tableName;
+        /**
+         * to extend a controller-template with all possible usefull methods
+         * @param {object} comtroller having properties that discribe the table accessed by the controller.
+         */
+        prepareController: function (controller) {
+            var tableName = controller.tableName;
             var IDKeys = [];
 
-            model.db = db;
+            controller.db = db;
 
-            model.insert = function (obj, callback, connection) {
+            controller.insert = function (obj, callback, connection) {
                 db.insert(tableName, obj, callback, connection);
             }
-            model.save = function (objs, callback, connection) {
-                db.save(tableName, IDKeys, objs, callback, connection)
+            controller.save = function (objs, callback, connection) {
+                db.save(tableName, IDKeys, objs, callback, connection);
             };
-            model.saveOne = function (obj, callback, connection) {
+            controller.saveOne = function (obj, callback, connection) {
                 db.saveOne(tableName, IDKeys, obj, callback, connection);
             };
 
-            model.getAll = function (page,pageSize,callback, connection) {
-                db.selectPaged("SELECT * FROM ??", [tableName],page,pageSize, callback, connection);
+            controller.getAll = function (page, pageSize, callback, connection) {
+                db.selectPaged("SELECT * FROM ??", [tableName], page, pageSize, callback, connection);
             };
 
-            model.findWhere = function (obj,page,pageSize, callback, connection) {
-                db.findWhere(tableName, obj,page,pageSize, connection, callback);
+            controller.findWhere = function (obj, page, pageSize, callback, connection) {
+                db.findWhere(tableName, obj, page, pageSize, connection, callback);
             };
-            model.findOneWhere = function (obj, callback, connection) {
+            controller.findOneWhere = function (obj, callback, connection) {
                 db.findOneWhere(tableName, obj, callback, connection);
             };
 
-            model.remove = function (obj, callback, connection) {
-                db.remove(tableName, IDKeys, obj, callback, connection)
+            controller.remove = function (obj, callback, connection) {
+                db.remove(tableName, IDKeys, obj, callback, connection);
             };
-            for (var i in model.fields) {
+            for (var i in controller.fields) {
                 (function (name, definition) {
                     var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
 
-                    model['getBy' + addName] = function (value,page,pageSize, callback, connection) {
-                        db.getBy(tableName, name, value,page,pageSize, callback, connection);
+                    controller['getBy' + addName] = function (value, page, pageSize, callback, connection) {
+                        db.getBy(tableName, name, value, page, pageSize, callback, connection);
                     };
 
-                    model['getOneBy' + addName] = function (value, callback, connection) {
+                    controller['getOneBy' + addName] = function (value, callback, connection) {
                         db.getOneBy(tableName, name, value, callback, connection);
                     };
 
-                    model['removeBy' + addName] = function (value, callback, connection) {
+                    controller['removeBy' + addName] = function (value, callback, connection) {
                         db.remove(tableName, name, value, callback, connection);
                     };
-                    prepareFetchMethod(db, model, tableName, name, definition)
+                    prepareFetchMethod(db, controller, tableName, name, definition);
                     if (definition.primary) { IDKeys.push(name); }
-                })(i, model.fields[i]);
+                })(i, controller.fields[i]);
             }
             if (!IDKeys.length) IDKeys.push('id');
-            if (model.has) {
-                for (var name in model.has) {
-                    prepareFetchMethod(db, model, tableName, name, { mapTo: model.has[name] });
+            if (controller.has) {
+                for (var name in controller.has) {
+                    prepareFetchMethod(db, controller, tableName, name, { mapTo: controller.has[name] });
                 }
             }
-            return model;
+            return controller;
         }
     };
     return db;
 }
 
-function prepareFetchMethod(db, model, tableName, name, definition) {
+/**
+ * extent the crontroller with methods to fetch related data.
+ */
+function prepareFetchMethod(db, controller, tableName, name, definition) {
     var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
-    model['fetch' + addName] = function (objs, callback, connection) {
+    controller['fetch' + addName] = function (objs, callback, connection) {
         if (!Array.isArray(objs)) { objs = [objs]; }
         var objsByKey = {};
         var keys = objs.map(function (obj) {
@@ -327,14 +421,14 @@ function prepareFetchMethod(db, model, tableName, name, definition) {
                     var objs = objsByKey[key];
                     objs.forEach(function (obj) {
                         if (definition.mapTo.multiple) {
-                            if (!obj['_' + name]) obj['_' + name] = []
+                            if (!obj['_' + name]) obj['_' + name] = [];
                             obj['_' + name].push(item);
                         } else {
                             obj['_' + name] = item;
                         }
                     });
                 });
-                callback(null, objs)
+                callback(null, objs, list);
             }, connection);
     }
 }
