@@ -1,7 +1,6 @@
 var mysql = require('mysql');
 
 // todo: add support for  n:m ralations including middle Properties (could be realized by 2 simple Fetch methods)
-// todo: paging, for findWhere, and getBy
 
 /**
  * makes sure, that poolconnections get released when they got committed or rollback
@@ -83,17 +82,62 @@ module.exports = function (config) {
                 callback(err, result.insertId);
             }, connection);
         },
+        defaultPagesize: 20,
 
-        getBy: function (tableName, fieldName, value, callback, connection) {
+        selectPaged: function (sql, values, page, pagesize, callback, connection) {
+            var paging = '';
+            if (typeof page === 'function') {
+                callback = page;
+                connection = pagesize;
+                page = null;
+                pagesize = null;
+            } else if (typeof pagesize === 'function') {
+                connection = callback;
+                callback = pagesize;
+                pagesize = db.defaultPagesize;
+            }
+            if (page === null) {
+                db.query(sql, values, callback, connection);
+            } else {
+                paging = " LIMIT " + (page * pagesize) + ',' + pagesize;
+                sql += paging;
+                var pages = null;
+                var result = null;
+                db.query(sql, values, function (err, res) {
+                    if (err) { result = err; done(); return; }
+                    result = res;
+                    done();
+                }, connection);
+                db.query('SELECT count(*) as count ' + sql.slice(sql.toLowerCase().indexOf('from')), values, function (err, c) {
+                    if (err) { pages = err; done(); return; }
+                    pages = c;
+                    done();
+                }, connection);
+                function done() {
+                console.log('db.selectPaged,',sql, values, page, pagesize)
+                    if (pages !== null && result !== null) {
+                        if (pages instanceof Error) {
+                            callback(pages)
+                        } else if (result instanceof Error) {
+                            callback(result);
+                        } else {
+                            callback(null, result, pages);
+                        }
+                    }
+                }
+            }
+        },
+
+        getBy: function (tableName, fieldName, value, page, pagesize, callback, connection) {
             var sql = 'SELECT * FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?)';
-            db.query(sql, [value], callback, connection);
+            db.selectPaged(sql, [value], page, pagesize, callback, connection);
         },
 
         getOneBy: function (tableName, fieldName, value, callback, connection) {
             var sql = 'SELECT * FROM ' + tableName + ' WHERE ' + fieldName + ' IN (?) LIMIT 0, 1;';
             db.query(sql, [value], first(callback), connection);
         },
-        findWhere: function (tableName, obj, callback, connection) {
+        findWhere: function (tableName, obj, page, pagesize, callback, connection) {
             var sql = 'SELECT * FROM ' + tableName + ' WHERE ';
             var where = '1 '
             var values = [];
@@ -102,7 +146,7 @@ module.exports = function (config) {
                 values.push(i);
                 values.push(obj[i]);
             }
-            db.query(sql + where, values, callback, connection);
+            db.selectPaged(sql + where, values, page, pagesize, callback, connection);
         },
         findOneWhere: function (tableName, obj, callback, connection) {
             var sql = 'SELECT * FROM ' + tableName + ' WHERE ';
@@ -149,19 +193,19 @@ module.exports = function (config) {
                 db.query(sql, values, callback, connection);
             }
         },
-        save:function(tableName, primaries, objs, callback,connection){
-            if(!Array.isArray(objs)){objs = [objs];}
+        save: function (tableName, primaries, objs, callback, connection) {
+            if (!Array.isArray(objs)) { objs = [objs]; }
             var number = objs.length;
             var count = 0;
             var errors = [];
-            objs.foreEach(function(obj){
-                 db.saveOne(tableName,primaries, obj, function(err){
-                     count++;
-                     if(err){errors.push([obj,err]);}
-                     if(count === number){
-                         callback(errors.length ? errors : null);
-                     }
-                 },connection)
+            objs.foreEach(function (obj) {
+                db.saveOne(tableName, primaries, obj, function (err) {
+                    count++;
+                    if (err) { errors.push([obj, err]); }
+                    if (count === number) {
+                        callback(errors.length ? errors : null);
+                    }
+                }, connection)
             });
         },
         saveOne: function (tableName, primaries, keys, callback, connection) {
@@ -203,19 +247,19 @@ module.exports = function (config) {
             model.insert = function (obj, callback, connection) {
                 db.insert(tableName, obj, callback, connection);
             }
-            model.save= function(objs, callback, connection){
-                db.save(tableName,IDKeys,objs,callback, connection)
+            model.save = function (objs, callback, connection) {
+                db.save(tableName, IDKeys, objs, callback, connection)
             };
             model.saveOne = function (obj, callback, connection) {
                 db.saveOne(tableName, IDKeys, obj, callback, connection);
             };
 
-            model.getAll = function (callback, connection) {
-                db.query("SELECT * FROM ??;", [tableName], callback, connection);
+            model.getAll = function (page,pageSize,callback, connection) {
+                db.selectPaged("SELECT * FROM ??", [tableName],page,pageSize, callback, connection);
             };
 
-            model.findWhere = function (obj, callback, connection) {
-                db.findWhere(tableName, obj, connection, callback);
+            model.findWhere = function (obj,page,pageSize, callback, connection) {
+                db.findWhere(tableName, obj,page,pageSize, connection, callback);
             };
             model.findOneWhere = function (obj, callback, connection) {
                 db.findOneWhere(tableName, obj, callback, connection);
@@ -228,8 +272,8 @@ module.exports = function (config) {
                 (function (name, definition) {
                     var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
 
-                    model['getBy' + addName] = function (value, callback, connection) {
-                        db.getBy(tableName, name, value, callback, connection);
+                    model['getBy' + addName] = function (value,page,pageSize, callback, connection) {
+                        db.getBy(tableName, name, value,page,pageSize, callback, connection);
                     };
 
                     model['getOneBy' + addName] = function (value, callback, connection) {
