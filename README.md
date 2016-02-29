@@ -13,7 +13,7 @@ var db = tMysqlController({
 	database: 'myjsblog'
 });
 // define a controller Template
-var userController = {
+var userDao = {
 	tableName:'user',
 	fields:{ // fields in the table
 		id:{primary:true},
@@ -28,11 +28,26 @@ var userController = {
         // makes it possible to load all pictures uploaded by some user
     }
 }
-db.prepareController(userController);
+db.prepareController(userDao);
+
+//insert some objects
+userDao.insert({name:'Dave',password:'111111',mail:'dave@example.com',register: Date.now()})
+userDao.insert({name:'Richard',password:'111111',mail:'richard@example.com'register: Date.now()})
+userDao.insert({name:'Tobias',password:'111111',mail:'tobias@example.com'register: Date.now()})
+userDao.insert({name:'Michael',password:'111111',mail:'michael@example.com'register: Date.now()})
+
+//find one by Mail
+userDao.getOneByMail('tobias@example.com',function(){err,tobias}{
+    console.log(err,tobias) // null, {id:'2',name:'Tobias',password:'111111',mail:'tobias@example.com'register: Date.now()}
+});
+
+
+
+
 ```
 ## benefit
 
-After prepareController, the userController will look as followed.
+After prepareController, the userDao will look as followed.
 Actually it is extented by many usefull methods usually needed working on a database.
 All methods support to be executed in a [transaction](#transaction).
 getAll, findWhere, and getBy* methods support  [paging](#paging).
@@ -40,7 +55,7 @@ The functions to request and provide the response in a node-style-callback (err,
 
 ```javascript
 
-userController = {	
+userDao = {	
         // the properties defined in the template don't change
 	tableName:'user',
 	fields:{
@@ -102,7 +117,7 @@ module.exports = require("tmysqlcontroller")(connectionConfig);
 And then make a folder with your controllers that look like that: 
 ```javascript
 var db = require("./db");
-var userController = module.exports = db.prepareController({
+var userDao = module.exports = db.prepareController({
 	tableName:'user',
 	fields:{ // fields in the table
 		id:{primary:true},
@@ -154,7 +169,7 @@ You have seen, to use a method that supports transactions you pass the transacti
  * @param {Number} amount about to change the count
  * @param {Object} conneciton to supports transactions
  */
-userController.increaseById = function(id, amount, callback, conneciton){
+userDao.increaseById = function(id, amount, callback, conneciton){
 	this.db.query("UPDATE ?? SET likes = likes + ? WHERE ?? = ?",[this.tableName, amount, "id", id], callback, connection);
 };
 ```
@@ -164,7 +179,7 @@ You see, simple pass the connection into an other transaction supporting method;
 The base of the pageing is db.selectPaged(). witch is the query method with two additional optional parameter. page and pageSize before the callback. It will execute the query using db.query with a sqlString extended by a limit clouse. It will also execute the query with counting the results, to provide resultCount and pageCount as third argument to the callback.
 
 ```javascript
-userController.getAll(0,10,function(err, res, counts){
+userDao.getAll(0,10,function(err, res, counts){
 	console.log(err)// null;
     console.log(res)// [the 10 first userobjects]
     console.log(counts.resultCount) // 199
