@@ -396,6 +396,7 @@ module.exports = function (config) {
  */
 function prepareFetchMethod(db, controller, tableName, name, definition) {
     var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
+    var fetchName = definition.fatchName || ('_' + name);
     controller['fetch' + addName] = function (objs, callback, connection) {
         if (!Array.isArray(objs)) { objs = [objs]; }
         var objsByKey = {};
@@ -421,10 +422,10 @@ function prepareFetchMethod(db, controller, tableName, name, definition) {
                     var objs = objsByKey[key];
                     objs.forEach(function (obj) {
                         if (definition.mapTo.multiple) {
-                            if (!obj['_' + name]) obj['_' + name] = [];
-                            obj['_' + name].push(item);
+                            if (!obj[fetchName]) obj[fetchName] = [];
+                            obj[fetchName].push(item);
                         } else {
-                            obj['_' + name] = item;
+                            obj[fetchName] = item;
                         }
                     });
                 });

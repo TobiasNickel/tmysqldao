@@ -1,6 +1,6 @@
 {
-  "name": "tmysqlcontroller",
-  "version": "1.0.0",
+  "name": "tmysqldao",
+  "version": "1.0.2",
   "description": "handle mysql the direct way",
   "main": "tMysqlController.js",
   "scripts": {
