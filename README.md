@@ -110,14 +110,15 @@ userDao = {
 ```
 
 This is a good start that will help you to follow great programming principles.
-1. KISS: this framework is very close on the mysql module. providing you more comfortablity without make you learn and study many internals.
-2. Convention before configuration: when doing a request using the mysql library, you get dataobjects with the same property names as the fields in your table.
-3. separation of concernes: it is about fetching and updating data, you can easily build a similar framework to store the data in mongo, couchdb, readis or what ever db/rest-service providing the same api. you will also make Controller objects for validation, authentication,...
-4. single responsibility principle: one Dao should handle one tables objects.
-5. Don't repeat yourself: you get provided all methods, you usually need interacting with a table. You don't need to make them over and over again. 
-6. Principle of least astonishment: you can name you tables and names as you like, this framework give some reasonable defaults, but let you choose names for primary keys, foreighn keys ect.
-7. SOLID (object-oriented design): by default, then fetching data, you receife plain old js objects (POJO). providing a factory method, You can receife objects of specific clases with specific behaviors.
-8. Information hiding: using only the provided apis, you don't need to get in touch with SQL, but you can.
+
+	1: KISS: this framework is very close on the mysql module. providing you more comfortablity without make you learn and study many internals.
+	2: Convention before configuration: when doing a request using the mysql library, you get dataobjects with the same property names as the fields in your table.
+	3: separation of concernes: it is about fetching and updating data, you can easily build a similar framework to store the data in mongo, couchdb, readis or what ever db/rest-service providing the same api. you will also make Controller objects for validation, authentication,...
+	4. single responsibility principle: one Dao should handle one tables objects.
+	5. Don't repeat yourself: you get provided all methods, you usually need interacting with a table. You don't need to make them over and over again.
+	6. Principle of least astonishment: you can name you tables and names as you like, this framework give some reasonable defaults, but let you choose names for primary keys, foreighn keys ect.
+	7. SOLID (object-oriented design): by default, then fetching data, you receife plain old js objects (POJO). providing a factory method, You can receife objects of specific clases with specific behaviors.
+	8. Information hiding: using only the provided apis, you don't need to get in touch with SQL, but you can.
 
 
 ## bestpractice
