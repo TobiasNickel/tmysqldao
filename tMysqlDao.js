@@ -327,65 +327,65 @@ module.exports = function (config) {
         },
 
         /**
-         * to extend a controller-template with all possible usefull methods
-         * @param {object} comtroller having properties that discribe the table accessed by the controller.
+         * to extend a dao-template with all possible usefull methods
+         * @param {object} comtroller having properties that discribe the table accessed by the dao.
          */
-        prepareController: function (controller) {
-            var tableName = controller.tableName;
+        prepareDao: function (dao) {
+            var tableName = dao.tableName;
             var IDKeys = [];
 
-            controller.db = db;
+            dao.db = db;
 
-            controller.insert = function (obj, callback, connection) {
+            dao.insert = function (obj, callback, connection) {
                 db.insert(tableName, obj, callback, connection);
             }
-            controller.save = function (objs, callback, connection) {
+            dao.save = function (objs, callback, connection) {
                 db.save(tableName, IDKeys, objs, callback, connection);
             };
-            controller.saveOne = function (obj, callback, connection) {
+            dao.saveOne = function (obj, callback, connection) {
                 db.saveOne(tableName, IDKeys, obj, callback, connection);
             };
 
-            controller.getAll = function (page, pageSize, callback, connection) {
+            dao.getAll = function (page, pageSize, callback, connection) {
                 db.selectPaged("SELECT * FROM ??", [tableName], page, pageSize, callback, connection);
             };
 
-            controller.findWhere = function (obj, page, pageSize, callback, connection) {
+            dao.findWhere = function (obj, page, pageSize, callback, connection) {
                 db.findWhere(tableName, obj, page, pageSize, connection, callback);
             };
-            controller.findOneWhere = function (obj, callback, connection) {
+            dao.findOneWhere = function (obj, callback, connection) {
                 db.findOneWhere(tableName, obj, callback, connection);
             };
 
-            controller.remove = function (obj, callback, connection) {
+            dao.remove = function (obj, callback, connection) {
                 db.remove(tableName, IDKeys, obj, callback, connection);
             };
-            for (var i in controller.fields) {
+            for (var i in dao.fields) {
                 (function (name, definition) {
                     var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
 
-                    controller['getBy' + addName] = function (value, page, pageSize, callback, connection) {
+                    dao['getBy' + addName] = function (value, page, pageSize, callback, connection) {
                         db.getBy(tableName, name, value, page, pageSize, callback, connection);
                     };
 
-                    controller['getOneBy' + addName] = function (value, callback, connection) {
+                    dao['getOneBy' + addName] = function (value, callback, connection) {
                         db.getOneBy(tableName, name, value, callback, connection);
                     };
 
-                    controller['removeBy' + addName] = function (value, callback, connection) {
+                    dao['removeBy' + addName] = function (value, callback, connection) {
                         db.remove(tableName, name, value, callback, connection);
                     };
-                    prepareFetchMethod(db, controller, tableName, name, definition);
+                    prepareFetchMethod(db, dao, tableName, name, definition);
                     if (definition.primary) { IDKeys.push(name); }
-                })(i, controller.fields[i]);
+                })(i, dao.fields[i]);
             }
             if (!IDKeys.length) IDKeys.push('id');
-            if (controller.has) {
-                for (var name in controller.has) {
-                    prepareFetchMethod(db, controller, tableName, name, { mapTo: controller.has[name] });
+            if (dao.has) {
+                for (var name in dao.has) {
+                    prepareFetchMethod(db, dao, tableName, name, { mapTo: dao.has[name] });
                 }
             }
-            return controller;
+            return dao;
         }
     };
     return db;
@@ -394,10 +394,10 @@ module.exports = function (config) {
 /**
  * extent the crontroller with methods to fetch related data.
  */
-function prepareFetchMethod(db, controller, tableName, name, definition) {
+function prepareFetchMethod(db, dao, tableName, name, definition) {
     var addName = name[0].toUpperCase() + name.slice(1).toLowerCase();
     var fetchName = definition.fatchName || ('_' + name);
-    controller['fetch' + addName] = function (objs, callback, connection) {
+    dao['fetch' + addName] = function (objs, callback, connection) {
         if (!Array.isArray(objs)) { objs = [objs]; }
         var objsByKey = {};
         var keys = objs.map(function (obj) {
