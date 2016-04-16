@@ -4,7 +4,7 @@ unopinioned mysql controller for more convinience.
 ## usage
 ```javascript
 //require the module
-var tMysqlDao= require('tmysqlcontroller');
+var tMysqlDao= require('tmysqldao');
 // create a database object.
 var db = tMysqlDao({
 	connectionLimit: 5,
@@ -45,6 +45,8 @@ userDao.getOneByMail('tobias@example.com',function(){err,tobias}{
 
 
 ```
+you want to use promises or async/await, then you can require tmysqlpeomesedao.
+
 ## benefit
 
 After prepareDao, the userDao will look as followed.
