@@ -1,6 +1,9 @@
 # tMysqlDao
 unopinioned mysql controller for more convinience.
 
+
+and if you like promisses and async/await, you will like [tmysqlpromisedao](https://github.com/TobiasNickel/tmysqlpromisedao) even more.
+
 ## usage
 ```javascript
 //require the module
